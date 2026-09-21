@@ -1,0 +1,8 @@
+NovaStock System Architecture (Engineering - Internal)
+
+NovaStock's backend is a microservices architecture deployed on AWS EKS.
+The forecasting service uses a gradient-boosted model retrained nightly on
+Redshift data. The inventory sync service uses Kafka for event streaming
+between warehouse-management-system integrations and the core database.
+On-call engineers should check the #novastock-oncall Slack channel for
+incident runbooks. The staging environment mirrors production at 10% scale.

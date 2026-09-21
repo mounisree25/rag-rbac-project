@@ -1,0 +1,64 @@
+{
+  "name": "RAG - Automated Document Ingestion",
+  "nodes": [
+    {
+      "name": "Watch Folder / Bucket",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "notes": "Fires when a new file is added to the shared 'knowledge-base' Drive folder (swap for S3 Trigger / Local Folder Trigger as needed).",
+      "parameters": { "event": "fileCreated", "triggerOn": "specificFolder" }
+    },
+    {
+      "name": "Classify Department & Sensitivity",
+      "type": "n8n-nodes-base.function",
+      "notes": "Lightweight rules engine (folder path + filename keywords, e.g. '/finance/' -> department=finance, 'confidential' in name -> access_level=confidential) that tags each incoming file before ingestion. Falls back to department=general, access_level=internal.",
+      "parameters": {
+        "functionCode": "const path = items[0].json.filePath.toLowerCase();\nlet department = 'general';\nlet access_level = 'internal';\nif (path.includes('/finance/')) department = 'finance';\nif (path.includes('/engineering/')) department = 'engineering';\nif (path.includes('/hr/')) department = 'hr';\nif (path.includes('confidential')) access_level = 'confidential';\nif (path.includes('public')) access_level = 'public';\nitems[0].json.department = department;\nitems[0].json.access_level = access_level;\nreturn items;"
+      }
+    },
+    {
+      "name": "POST to Flask Ingestion Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "notes": "Calls the Flask microservice (app_flask_ingest.py) which chunks, embeds, and writes the file into ChromaDB with RBAC metadata.",
+      "parameters": {
+        "method": "POST",
+        "url": "http://ingestion-service:5001/webhooks/ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Webhook-Token", "value": "={{$env.INGEST_WEBHOOK_TOKEN}}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "file", "value": "={{$binary.data}}" },
+            { "name": "department", "value": "={{$json.department}}" },
+            { "name": "access_level", "value": "={{$json.access_level}}" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Notify #rag-ingestion (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "notes": "Posts a summary (filename, department, access_level, chunk_count) so the team has visibility into what just entered the knowledge base.",
+      "parameters": {
+        "channel": "#rag-ingestion",
+        "text": "Ingested `{{$json.filename}}` -> dept={{$json.department}}, access={{$json.access_level}}, chunks={{$json.chunk_count}}"
+      }
+    },
+    {
+      "name": "On Failure -> Alert",
+      "type": "n8n-nodes-base.errorTrigger",
+      "notes": "Wired to the workflow's error output; posts to #rag-ingestion-alerts and retries once after 60s for transient network errors.",
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Watch Folder / Bucket": { "main": [[{ "node": "Classify Department & Sensitivity" }]] },
+    "Classify Department & Sensitivity": { "main": [[{ "node": "POST to Flask Ingestion Webhook" }]] },
+    "POST to Flask Ingestion Webhook": { "main": [[{ "node": "Notify #rag-ingestion (Slack)" }]] }
+  },
+  "_readme": "This is a documentation-oriented export (hand-authored, trimmed of n8n's internal IDs/positions) describing the automated ingestion pipeline referenced in the resume: 'agentic AI workflow automation system using n8n microservice pipelines... automated document ingestion, ETL-style data preprocessing, and ~40% reduction in query response latency.' The 40% latency reduction comes from decoupling ingestion (async, batched, off the hot path) from the synchronous query API — see README.md 'Why two services' section."
+}

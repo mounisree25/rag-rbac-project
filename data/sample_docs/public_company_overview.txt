@@ -1,0 +1,8 @@
+TechNova Company Overview (Public)
+
+TechNova was founded in 2018 by Sarah Chen and Marcus Patel in Austin, Texas.
+The company specializes in AI-powered inventory management systems for retail
+businesses. TechNova currently serves over 500 clients across North America
+and Europe. Their flagship product, NovaStock, uses machine learning to
+predict demand and automate reordering. In 2023, TechNova raised $40 million
+in Series B funding led by Sequoia Capital.
